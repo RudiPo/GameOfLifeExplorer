@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>RudGameOfLife Explorer (V4.8.2)</title>
+    <style>
+        /* Optimiert für Blog-Einbettung (Iframe-friendly) */
+        #game-container { 
+            background: #111; display: flex; flex-direction: column; align-items: center; 
+            width: 100%; max-width: 1200px; margin: 0 auto; padding: 10px; 
+            font-family: 'Courier New', monospace; color: white; overflow: hidden;
+            box-sizing: border-box; border-radius: 8px;
+        }
+        .controls { 
+            width: 100%; display: flex; gap: 8px; align-items: center; background: #222;
+            padding: 8px 12px; border-radius: 8px; margin-bottom: 10px; justify-content: space-between;
+            box-sizing: border-box; flex-wrap: wrap;
+        }
+        .menu-font { color: #00FF41; font-weight: bold; font-size: 12px; white-space: nowrap; }
+        .button-group { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+        
+        button { 
+            padding: 5px 8px; background: #00FF41; border: none; border-radius: 4px; 
+            cursor: pointer; font-weight: bold; font-size: 10px; color: #000;
+        }
+        button:hover { background: #00cc33; }
+        
+        button.active-mode { background: #ff00ff !important; color: white; }
+        button.debug-btn.active { background: #ff4444 !important; color: white; }
+        button.pause-btn.paused { background: #007bff !important; color: white; }
+        button.clear-btn { background: #ff4444; color: white; }
+        button.help-btn { background: #444; color: #00FF41; border: 1px solid #00FF41; border-radius: 50%; width: 22px; height: 22px; padding: 0; line-height: 20px; }
+        
+        select, input[type="number"] { 
+            background: #333; color: #00FF41; border: 1px solid #00FF41; 
+            border-radius: 4px; padding: 2px; font-size: 11px; font-family: inherit;
+        }
+        input[type="number"] { width: 45px; text-align: center; }
+
+        canvas { background: #000; border: 1px solid #333; cursor: crosshair; image-rendering: pixelated; width: 100%; height: auto; max-height: 75vh; }
+        #fileInput { display: none; }
+        .info { color: #00FF41; font-weight: bold; padding: 0 5px; border-left: 1px solid #444; border-right: 1px solid #444; min-width: 60px; text-align: center; }
+
+        /* Modal Styling */
+        #helpModal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); }
+        .modal-content { background: #111; margin: 2% auto; padding: 30px; border: 2px solid #00FF41; width: 80%; max-height: 85vh; border-radius: 12px; color: #ccc; overflow-y: auto; line-height: 1.6; text-align: left; }
+        .modal-content h1, .modal-content h2 { color: #00FF41; margin-top: 15px; }
+        .modal-content kbd { background: #333; padding: 2px 4px; border-radius: 3px; color: #ff00ff; border: 1px solid #555; }
+        hr { border: 0; border-top: 1px solid #333; margin: 20px 0; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div class="controls">
+        <div class="button-group">
+            <button class="help-btn" onclick="toggleHelp()">?</button>
+            <div class="menu-font">RudGameOfLife V4.8.2</div>
+        </div>
+        
+        <div class="button-group">
+            <div class="menu-font">Res:<input type="number" id="resInput" value="10" min="2" max="100" onchange="changeResolution()"></div>
+            <select id="patternSelect">
+                <optgroup label="Basic"><option value="single">Single Cell</option><option value="glider">Glider</option></optgroup>
+                <optgroup label="Spaceships"><option value="lwss">LWSS</option><option value="hwss">HWSS</option></optgroup>
+                <optgroup label="Engines"><option value="pulsar">Pulsar</option><option value="gosper">Gosper Gun</option><option value="breeder">Breeder</option></optgroup>
+            </select>
+            <button onclick="resetGame()">New Random</button>
+            <div class="menu-font">Dens:<input type="number" id="densityInput" value="15" min="5" max="95">%</div>
+            <button id="editBtn" onclick="toggleEditMode()">Edit (ESC)</button>
+            <button class="clear-btn" onclick="clearBoard()">Clear</button>
+            <button id="debugBtn" class="debug-btn" onclick="toggleDebug()">Debug</button>
+            <div class="info">Gen: <span id="genCount">0</span></div>
+            <button id="prevBtn" onclick="prevGen()">-1</button>
+            <button id="pauseBtn" class="pause-btn" onclick="togglePause()">Pause</button>
+            <button onclick="nextStep()">+1</button>
+            <button style="background: #007bff; color: white;" onclick="exportGrid()">Save</button>
+            <button style="background: #28a745; color: white;" onclick="fileInput.click()">Load</button>
+            <input type="file" id="fileInput" accept=".json" onchange="importGrid(event)">
+        </div>
+
+        <div class="menu-font">Inc:<input type="number" id="intervalInput" value="0.01" min="0.001" max="3.0" step="0.01" onchange="updateInterval()">s</div>
+    </div>
+
+    <canvas id="lifeCanvas"></canvas>
+</div>
+
+<div id="helpModal" onclick="toggleHelp()">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <h1>User Manual: RudGameOfLife Explorer V4.8.2</h1>
+        <hr>
+        <h2>1. Interface Basics</h2>
+        <ul>
+            <li><strong>Res (Resolution):</strong> Sets cell size. Use smaller values for massive patterns like the Breeder.</li>
+            <li><strong>Dens (Density):</strong> Percentage of cells alive at start when clicking 'New Random'.</li>
+            <li><strong>Inc (Increment):</strong> Delay between generations. 0.001s is the absolute speed limit.</li>
+            <li><strong>-1 / +1:</strong> Step backward (100 step history) or forward manually.</li>
+        </ul>
+
+        <h2>2. Build Mode</h2>
+        <p>Toggle <strong>Edit Mode</strong> via the button or <kbd>ESC</kbd>. The grid highlights in magenta.</p>
+        <ul>
+            <li>Select a pattern (e.g., Gosper Gun) and click the grid.</li>
+            <li><strong>Keyboard:</strong> Use <kbd>Arrows</kbd> to move and <kbd>Enter</kbd> to place.</li>
+        </ul>
+
+        <h2>3. Smart Save/Load</h2>
+        <p>Saves are exported as <code>.json</code>. The file includes the current resolution so the explorer can restore the view perfectly upon loading.</p>
+        <hr>
+        <button onclick="toggleHelp()" style="width:100%; padding:15px; background:#00FF41; color:#000; font-weight:bold; cursor:pointer; border-radius:8px;">Back to Life</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('lifeCanvas');
+    const ctx = canvas.getContext('2d');
+    const resInput = document.getElementById('resInput');
+    const genLabel = document.getElementById('genCount');
+    const intervalInput = document.getElementById('intervalInput');
+    const densityInput = document.getElementById('densityInput');
+    const editBtn = document.getElementById('editBtn');
+    const debugBtn = document.getElementById('debugBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const helpModal = document.getElementById('helpModal');
+    const fileInput = document.getElementById('fileInput');
+    const patternSelect = document.getElementById('patternSelect');
+
+    let resolution = parseInt(resInput.value); 
+    let COLS, ROWS, grid;
+    let debugMode = false, isPaused = false, editMode = false;
+    let generation = 0, history = [], timerId = null;
+    let cursor = { x: 0, y: 0 };
+
+    const patterns = {
+        glider: [[0,1,0],[0,0,1],[1,1,1]],
+        lwss: [[0,1,1,1,1],[1,0,0,0,1],[0,0,0,0,1],[1,0,0,1,0]],
+        hwss: [[0,0,1,1,0,0],[0,1,1,1,1,0],[1,1,1,1,1,1],[1,1,0,0,1,1],[0,0,1,1,0,0]],
+        pulsar: [[0,0,1,1,1,0,0,0,1,1,1,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0],[1,0,0,0,0,1,0,1,0,0,0,0,1],[1,0,0,0,0,1,0,1,0,0,0,0,1],[1,0,0,0,0,1,0,1,0,0,0,0,1],[0,0,1,1,1,0,0,0,1,1,1,0,0]],
+        gosper: [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1],[0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1,1],[1,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0],[1,1,0,0,0,0,0,0,0,0,1,0,0,0,1,0,1,1,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]],
+        breeder: [[0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0],[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0],[1,1,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0],[1,1,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0],[0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0],[0,0,1,0,0,1,0,0,0,0,0,0,0,0,0,0,0],[0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0]]
+    };
+
+    function setup() {
+        const container = document.getElementById('game-container');
+        canvas.width = container.clientWidth - 20;
+        canvas.height = window.innerHeight * 0.7; 
+        COLS = Math.floor(canvas.width / resolution);
+        ROWS = Math.floor(canvas.height / resolution);
+        if(!grid || grid.length !== COLS || grid[0].length !== ROWS) {
+            grid = Array.from({ length: COLS }, () => Array.from({ length: ROWS }, () => 0));
+        }
+        draw();
+    }
+
+    function changeResolution() { resolution = parseInt(resInput.value) || 10; setup(); }
+    function toggleHelp() { helpModal.style.display = (helpModal.style.display === 'block') ? 'none' : 'block'; }
+    function clearBoard() { grid = Array.from({ length: COLS }, () => Array.from({ length: ROWS }, () => 0)); generation = 0; history = []; updateUI(); draw(); }
+    function resetGame() { const d = (parseInt(densityInput.value) || 15) / 100; grid = Array.from({ length: COLS }, () => Array.from({ length: ROWS }, () => Math.random() < d ? 1 : 0)); generation = 0; history = []; updateUI(); draw(); }
+    function toggleEditMode() { editMode = !editMode; editBtn.classList.toggle('active-mode', editMode); if (editMode) { isPaused = true; updatePauseUI(); } draw(); }
+    function togglePause() { isPaused = !isPaused; updatePauseUI(); }
+    function updatePauseUI() { pauseBtn.innerText = isPaused ? "Play" : "Pause"; pauseBtn.classList.toggle('paused', isPaused); }
+    function toggleDebug() { debugMode = !debugMode; debugBtn.classList.toggle('active', debugMode); draw(); }
+
+    function placePattern(x, y) {
+        const type = patternSelect.value;
+        if (type === 'single') { grid[x][y] = grid[x][y] ? 0 : 1; } 
+        else if (patterns[type]) {
+            const p = patterns[type];
+            for(let i=0; i<p.length; i++) {
+                for(let j=0; j<p[i].length; j++) {
+                    grid[(x + j) % COLS][(y + i) % ROWS] = p[i][j];
+                }
+            }
+        }
+        draw();
+    }
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (!editMode) return;
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = Math.floor(((e.clientX - rect.left) * scaleX) / resolution);
+        const y = Math.floor(((e.clientY - rect.top) * scaleY) / resolution);
+        if (x >= 0 && x < COLS && y >= 0 && y < ROWS) placePattern(x, y);
+    });
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === "Escape") toggleEditMode();
+        if (!editMode) return;
+        switch(e.key) {
+            case "ArrowUp":    cursor.y = (cursor.y - 1 + ROWS) % ROWS; break;
+            case "ArrowDown":  cursor.y = (cursor.y + 1 + ROWS) % ROWS; break;
+            case "ArrowLeft":  cursor.x = (cursor.x - 1 + COLS) % COLS; break;
+            case "ArrowRight": cursor.x = (cursor.x + 1 + COLS) % COLS; break;
+            case "Enter": case " ": placePattern(cursor.x, cursor.y); e.preventDefault(); break;
+        }
+        draw();
+    });
+
+    function countNeighbors(g, col, row) {
+        let sum = 0;
+        for (let i = -1; i <= 1; i++) {
+            for (let j = -1; j <= 1; j++) {
+                if (i === 0 && j === 0) continue;
+                sum += g[(col + i + COLS) % COLS][(row + j + ROWS) % ROWS];
+            }
+        }
+        return sum;
+    }
+
+    function nextStep() {
+        history.push(grid.map(arr => [...arr])); if (history.length > 100) history.shift();
+        const nextGrid = grid.map(arr => [...arr]);
+        for (let col = 0; col < COLS; col++) {
+            for (let row = 0; row < ROWS; row++) {
+                const n = countNeighbors(grid, col, row);
+                if (grid[col][row] === 1 && (n < 2 || n > 3)) nextGrid[col][row] = 0;
+                else if (grid[col][row] === 0 && n === 3) nextGrid[col][row] = 1;
+            }
+        }
+        grid = nextGrid; generation++; updateUI(); draw();
+    }
+
+    function prevGen() { if (history.length > 0) { grid = history.pop(); generation--; updateUI(); draw(); } }
+    function updateUI() { genLabel.innerText = generation; document.getElementById('prevBtn').disabled = history.length === 0; }
+    function updateInterval() { clearTimeout(timerId); autoLoop(); }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let col = 0; col < COLS; col++) {
+            for (let row = 0; row < ROWS; row++) {
+                const x = col * resolution; const y = row * resolution;
+                if (grid[col][row]) { ctx.fillStyle = '#00FF41'; ctx.fillRect(x, y, resolution - 1, resolution - 1); }
+                if (editMode && col === cursor.x && row === cursor.y) { ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 2; ctx.strokeRect(x+1, y+1, resolution-3, resolution-3); }
+                if (debugMode) { ctx.fillStyle = grid[col][row] ? "#000" : "#444"; ctx.font = (resolution*0.35)+"px Arial"; ctx.textAlign = "center"; ctx.fillText(countNeighbors(grid, col, row), x + resolution/2, y + resolution/2 + resolution*0.15); }
+            }
+        }
+        if (editMode) { ctx.fillStyle = "rgba(255, 0, 255, 0.05)"; ctx.fillRect(0, 0, canvas.width, canvas.height); }
+    }
+
+    function autoLoop() { if (!isPaused && !editMode) nextStep(); timerId = setTimeout(autoLoop, parseFloat(intervalInput.value) * 1000); }
+
+    function exportGrid() {
+        const saveObj = { res: resolution, gen: generation, data: grid };
+        const blob = new Blob([JSON.stringify(saveObj)], {type: 'application/json'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `rud_gol_v482_res${resolution}_gen${generation}.json`; a.click();
+    }
+
+    function importGrid(event) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const imported = JSON.parse(e.target.result);
+                if (imported.res && imported.data) {
+                    resolution = imported.res; resInput.value = resolution;
+                    generation = imported.gen || 0; grid = imported.data;
+                }
+                setup();
+            } catch (err) { alert("Load error!"); }
+        };
+        reader.readAsText(event.target.files[0]);
+    }
+
+    window.onresize = setup; setup(); autoLoop();
+</script>
+</body>
+</html>
